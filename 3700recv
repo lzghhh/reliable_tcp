@@ -1,6 +1,7 @@
 #!/usr/bin/env -S python3 -u
 
 import argparse, socket, time, json, select, struct, sys, math
+import hashlib
 import zlib
 from json import JSONDecodeError
 
@@ -42,16 +43,24 @@ class Receiver:
                     except JSONDecodeError:
                         continue
 
+                    if msg["hash"] != hashlib.md5(str(msg["data"]).encode("utf-8")).hexdigest():
+                        continue
+
                     self.log("Received data message %s" % msg)
                     if self.received_packets.index(msg) >= 0:
-                        self.send({"type": "ack", "Sequence": msg["Sequence"], "data": msg["data"]})
+                        self.send({"type": "ack", "Sequence": msg["Sequence"], "data": msg["data"],
+                                   "hash": hashlib.md5(str(msg["data"]).encode('utf-8')).hexdigest(),
+                                   "time": time.time()})
+                        self.log("%d" % msg["Sequence"])
                         continue
 
                 except ValueError:
                     # self.log("sssssssssssssssssssssss")
                     self.received_packets.append(msg)
                     # Always send back an ack
-                    self.send({"type": "ack", "Sequence" : msg["Sequence"], "data": msg["data"]})
+                    self.send({"type": "ack", "Sequence" : msg["Sequence"], "data": msg["data"],
+                               "hash": hashlib.md5(str(msg["data"]).encode('utf-8')).hexdigest(),
+                               "time": time.time()})
                     # Print out the data to stdout
                     if self.printSequence == msg["Sequence"]:
                         self.printSequence += 1

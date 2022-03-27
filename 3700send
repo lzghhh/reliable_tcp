@@ -1,6 +1,7 @@
 #!/usr/bin/env -S python3 -u
 
 import argparse, socket, time, json, select, struct, sys, math
+import hashlib
 from json import JSONDecodeError
 
 DATA_SIZE = 1375
@@ -16,7 +17,9 @@ class Sender:
         self.waiting = False
         self.packet_storage = {}
         self.tolerance = 1
-        self.sequenceNumber = 0;
+        self.sequenceNumber = 0
+        self.repeated_ack = 0
+        self.timeout = 1
 
     def log(self, message):
         sys.stderr.write(message + "\n")
@@ -30,14 +33,21 @@ class Sender:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
 
             socks = select.select(sockets, [], [], 0.1)[0]
+            time_out_flag = True
             if self.packet_storage is not None:
                 for x in self.packet_storage.keys():
                     # in packet_storage,key is data, 0 is time, 1 is sequence number
-                    if time.time() - self.packet_storage[x][0] > 0.75:
+                    if time.time() - self.packet_storage[x][0] > self.timeout:
                         seq_temp = self.packet_storage[x][1]
-                        msg = {"type": "msg", "Sequence": seq_temp, "data": x}
+                        msg = {"type": "msg", "Sequence": seq_temp, "data": x,
+                               "hash": hashlib.md5(str(x).encode('utf-8')).hexdigest()}
                         self.send(msg)
                         self.tolerance = math.ceil(self.tolerance / 2)
+                        if time_out_flag:
+                            self.timeout *= 2
+                            time_out_flag = False
+                        self.log("dividingggggggggggggg")
+                        self.log("%d" % seq_temp)
                         self.packet_storage[x][0] = time.time()
             for conn in socks:
                 try:
@@ -45,33 +55,41 @@ class Sender:
                         k, addr = conn.recvfrom(65535)
                         msg = k.decode('utf-8')
                         msg = json.loads(msg)
-
+                        if msg["data"] not in list(self.packet_storage.keys()):
+                            raise ValueError
                         for x in list(self.packet_storage.keys()):
-                            if x == msg["data"] and msg["type"] == "ack":
+                            if x == msg["data"] and msg["type"] == "ack" and msg["hash"] == \
+                                    hashlib.md5(str(x).encode('utf-8')).hexdigest():
+                                if msg["time"] - self.packet_storage[x][0] < self.timeout:
+                                    self.tolerance *= 2
+                                    self.timeout = math.ceil(self.timeout / 2)
                                 self.packet_storage.pop(x, None)
                                 self.log("dellllllllllllllllllllllllllll")
-                                self.tolerance = 2
+                                self.log("%d" % self.tolerance)
                         self.log("Received message '%s'" % msg)
-
-
                         self.waiting = False
                     elif conn == sys.stdin:
                         for x in range(self.tolerance):
-                            # self.log("ssssssssssssssssssssssssssssssssssssssssss")
+                            # self.log("%d" %self.tolerance)
                             data = sys.stdin.read(DATA_SIZE)
                             if len(data) == 0:
                                 if self.packet_storage:
                                     continue
                                 self.log("All done!")
                                 sys.exit(0)
-                            msg = {"type": "msg", "Sequence": self.sequenceNumber, "data": data}
+                            msg = {"type": "msg", "Sequence": self.sequenceNumber, "data": data,
+                                   "hash": hashlib.md5(str(data).encode("utf-8")).hexdigest()}
                             self.packet_storage[msg["data"]] = [time.time(), self.sequenceNumber]
                             self.sequenceNumber += 1
                             self.log("Sending message '%s'" % msg)
                             self.send(msg)
                             self.waiting = True
-                except (NameError, JSONDecodeError):
+                except (NameError, JSONDecodeError, ValueError):
                     self.log("ooooooooooooooooooooooo")
+                    self.repeated_ack += 1
+                    if self.repeated_ack == 3:
+                        self.tolerance = math.ceil(self.tolerance / 2)
+                        self.repeated_ack = 0
                     continue
 
         return
