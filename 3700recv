@@ -1,6 +1,9 @@
 #!/usr/bin/env -S python3 -u
 
 import argparse, socket, time, json, select, struct, sys, math
+import zlib
+from json import JSONDecodeError
+
 
 class Receiver:
     def __init__(self):
@@ -8,9 +11,11 @@ class Receiver:
         self.socket.bind(('0.0.0.0', 0))
         self.port = self.socket.getsockname()[1]
         self.log("Bound to port %d" % self.port)
+        self.received_packets = []
 
         self.remote_host = None
         self.remote_port = None
+        self.printSequence = 0
 
     def send(self, message):
         self.socket.sendto(json.dumps(message).encode('utf-8'), (self.remote_host, self.remote_port))
@@ -23,22 +28,48 @@ class Receiver:
         while True:
             socks = select.select([self.socket], [], [])[0]
             for conn in socks:
-                data, addr = conn.recvfrom(65535)
+                self.log("syqqqqqqqqqqqqqqqqqqqqqqqqqqqqq")
+                try:
+                    data, addr = conn.recvfrom(65535)
 
-                # Grab the remote host/port if we don't alreadt have it
-                if self.remote_host is None:
-                    self.remote_host = addr[0]
-                    self.remote_port = addr[1]
+                    # Grab the remote host/port if we don't alreadt have it
+                    if self.remote_host is None:
+                        self.remote_host = addr[0]
+                        self.remote_port = addr[1]
 
-                msg = json.loads(data.decode('utf-8'))
-                self.log("Received data message %s" % msg)
+                    try:
+                        msg = json.loads(data.decode('utf-8'))
+                    except JSONDecodeError:
+                        continue
 
-                # Print out the data to stdout
-                print(msg["data"], end='', flush=True)
+                    self.log("Received data message %s" % msg)
+                    if self.received_packets.index(msg) >= 0:
+                        self.send({"type": "ack", "Sequence": msg["Sequence"], "data": msg["data"]})
+                        continue
 
-                # Always send back an ack
-                self.send({ "type": "ack", "data": msg["data"]})
+                except ValueError:
+                    # self.log("sssssssssssssssssssssss")
+                    self.received_packets.append(msg)
+                    # Always send back an ack
+                    self.send({"type": "ack", "Sequence" : msg["Sequence"], "data": msg["data"]})
+                    # Print out the data to stdout
+                    if self.printSequence == msg["Sequence"]:
+                        self.printSequence += 1
+                        print(msg["data"], end='', flush=True)
+                    else:
+                        while True:
+                            res = next((msg for msg in self.received_packets
+                                        if msg["Sequence"] == self.printSequence), None)
+                            if res == None:
+                                break
+                            print(res["data"], end='', flush=True)
+                            self.printSequence += 1
+
+
+                    pass
+
         return
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='receive data')

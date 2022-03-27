@@ -1,6 +1,7 @@
 #!/usr/bin/env -S python3 -u
 
 import argparse, socket, time, json, select, struct, sys, math
+from json import JSONDecodeError
 
 DATA_SIZE = 1375
 
@@ -14,6 +15,8 @@ class Sender:
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
         self.packet_storage = {}
+        self.tolerance = 1
+        self.sequenceNumber = 0;
 
     def log(self, message):
         sys.stderr.write(message + "\n")
@@ -27,37 +30,52 @@ class Sender:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
 
             socks = select.select(sockets, [], [], 0.1)[0]
+            if self.packet_storage is not None:
+                for x in self.packet_storage.keys():
+                    # in packet_storage,key is data, 0 is time, 1 is sequence number
+                    if time.time() - self.packet_storage[x][0] > 0.75:
+                        seq_temp = self.packet_storage[x][1]
+                        msg = {"type": "msg", "Sequence": seq_temp, "data": x}
+                        self.send(msg)
+                        self.tolerance = math.ceil(self.tolerance / 2)
+                        self.packet_storage[x][0] = time.time()
             for conn in socks:
-                if conn == self.socket:
-                    k, addr = conn.recvfrom(65535)
-                    msg = k.decode('utf-8')
-                    msg = json.loads(msg)
+                try:
+                    if conn == self.socket:
+                        k, addr = conn.recvfrom(65535)
+                        msg = k.decode('utf-8')
+                        msg = json.loads(msg)
 
-                    for x in self.packet_storage.keys():
-                        self.log(x)
-                        if x == msg["data"] and msg["type"] == "ack":
-                            del self.packet_storage[x]
-                            break
+                        for x in list(self.packet_storage.keys()):
+                            if x == msg["data"] and msg["type"] == "ack":
+                                self.packet_storage.pop(x, None)
+                                self.log("dellllllllllllllllllllllllllll")
+                                self.tolerance = 2
+                        self.log("Received message '%s'" % msg)
 
-                    for x in self.packet_storage.keys():
-                        if self.packet_storage[x] - time.time() > 0.75:
-                            msg = { "type": "msg", "data": x}
+
+                        self.waiting = False
+                    elif conn == sys.stdin:
+                        for x in range(self.tolerance):
+                            # self.log("ssssssssssssssssssssssssssssssssssssssssss")
+                            data = sys.stdin.read(DATA_SIZE)
+                            if len(data) == 0:
+                                if self.packet_storage:
+                                    continue
+                                self.log("All done!")
+                                sys.exit(0)
+                            msg = {"type": "msg", "Sequence": self.sequenceNumber, "data": data}
+                            self.packet_storage[msg["data"]] = [time.time(), self.sequenceNumber]
+                            self.sequenceNumber += 1
+                            self.log("Sending message '%s'" % msg)
                             self.send(msg)
-                    self.log("Received message '%s'" % msg)
-                    self.waiting = False
-                elif conn == sys.stdin:
-                    data = sys.stdin.read(DATA_SIZE)
-                    if len(data) == 0:
-                        self.log("All done!")
-                        sys.exit(0)
-
-                    msg = { "type": "msg", "data": data }
-                    self.packet_storage[msg["data"]] = time.time()
-                    self.log("Sending message '%s'" % msg)
-                    self.send(msg)
-                    self.waiting = True
+                            self.waiting = True
+                except (NameError, JSONDecodeError):
+                    self.log("ooooooooooooooooooooooo")
+                    continue
 
         return
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='send data')
