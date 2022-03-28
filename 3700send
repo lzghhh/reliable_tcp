@@ -34,11 +34,6 @@ class Sender:
                 self.tolerance = 128
             elif self.tolerance < 2:
                 self.tolerance = 2
-            self.log("***************************************************************************************")
-            self.log("%d" % self.tolerance)
-            self.log("%d" % self.timeout)
-            self.log("%d" % len(self.packet_storage))
-            self.log("***************************************************************************************")
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
 
             socks = select.select(sockets, [], [], 0.1)[0]
@@ -55,10 +50,8 @@ class Sender:
                         msg = {"type": "msg", "Sequence": seq_temp, "data": x,
                                "hash": hashlib.md5(str(x).encode('utf-8')).hexdigest()}
                         self.send(msg)
+                        self.log("Received message '%s'" % msg)
                         loop_tolerance -= 1
-
-                        self.log("dividingggggggggggggg")
-                        self.log("%d" % seq_temp)
                         self.packet_storage[x][0] = time.time()
                         if time_out_flag:
                             self.timeout *= 2
@@ -82,8 +75,6 @@ class Sender:
                                     self.tolerance *= 2
                                     self.timeout = math.ceil(self.timeout / 2)
                                 self.packet_storage.pop(x, None)
-                                self.log("dellllllllllllllllllllllllllll")
-                                self.log("%d" % self.tolerance)
                         self.log("Received message '%s'" % msg)
                         self.waiting = False
                     elif conn == sys.stdin:
@@ -92,7 +83,6 @@ class Sender:
                         if len(self.packet_storage) >= 1:
                             tolerance_temp = self.tolerance - len(self.packet_storage)
                         for x in range(tolerance_temp):
-                            # self.log("%d" %self.tolerance)
                             data = sys.stdin.read(DATA_SIZE)
                             if len(data) == 0:
                                 if self.packet_storage:

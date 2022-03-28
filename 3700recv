@@ -29,7 +29,6 @@ class Receiver:
         while True:
             socks = select.select([self.socket], [], [])[0]
             for conn in socks:
-                self.log("syqqqqqqqqqqqqqqqqqqqqqqqqqqqqq")
                 try:
                     data, addr = conn.recvfrom(65535)
 
@@ -51,12 +50,10 @@ class Receiver:
                         self.send({"type": "ack", "Sequence": msg["Sequence"], "data": msg["data"],
                                    "hash": hashlib.md5(str(msg["data"]).encode('utf-8')).hexdigest(),
                                    "time": time.time()})
-                        self.log("%d" % msg["Sequence"])
 
                         continue
 
                 except ValueError:
-                    # self.log("sssssssssssssssssssssss")
                     self.received_packets.append(msg)
                     # Always send back an ack
                     self.send({"type": "ack", "Sequence" : msg["Sequence"], "data": msg["data"],
