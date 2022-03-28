@@ -34,21 +34,25 @@ class Sender:
 
             socks = select.select(sockets, [], [], 0.1)[0]
             time_out_flag = True
+            loop_tolerance = self.tolerance
             if self.packet_storage is not None:
                 for x in self.packet_storage.keys():
+                    if loop_tolerance < 0:
+                        break
                     # in packet_storage,key is data, 0 is time, 1 is sequence number
                     if time.time() - self.packet_storage[x][0] > self.timeout:
                         seq_temp = self.packet_storage[x][1]
                         msg = {"type": "msg", "Sequence": seq_temp, "data": x,
                                "hash": hashlib.md5(str(x).encode('utf-8')).hexdigest()}
                         self.send(msg)
+                        loop_tolerance -= 1
                         self.tolerance = math.ceil(self.tolerance / 2)
-                        if time_out_flag:
-                            self.timeout *= 2
-                            time_out_flag = False
                         self.log("dividingggggggggggggg")
                         self.log("%d" % seq_temp)
                         self.packet_storage[x][0] = time.time()
+                        if time_out_flag:
+                            self.timeout *= 2
+                            time_out_flag = False
             for conn in socks:
                 try:
                     if conn == self.socket:
@@ -60,11 +64,12 @@ class Sender:
                         for x in list(self.packet_storage.keys()):
                             if x == msg["data"] and msg["type"] == "ack" and msg["hash"] == \
                                     hashlib.md5(str(x).encode('utf-8')).hexdigest():
-                                if msg["time"] - self.packet_storage[x][0] < self.timeout:
+                                if (msg["time"] - self.packet_storage[x][0]) + (time.time() - msg["time"]) \
+                                        < self.timeout:
                                     self.tolerance *= 2
                                     self.timeout = math.ceil(self.timeout / 2)
                                 self.packet_storage.pop(x, None)
-                                self.log("dellllllllllllllllllllllllllll")
+                                self.log("dellllllllllllllllllllllllllll")  
                                 self.log("%d" % self.tolerance)
                         self.log("Received message '%s'" % msg)
                         self.waiting = False
