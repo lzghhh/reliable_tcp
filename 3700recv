@@ -52,6 +52,7 @@ class Receiver:
                                    "hash": hashlib.md5(str(msg["data"]).encode('utf-8')).hexdigest(),
                                    "time": time.time()})
                         self.log("%d" % msg["Sequence"])
+
                         continue
 
                 except ValueError:
@@ -62,17 +63,17 @@ class Receiver:
                                "hash": hashlib.md5(str(msg["data"]).encode('utf-8')).hexdigest(),
                                "time": time.time()})
                     # Print out the data to stdout
-                    if self.printSequence == msg["Sequence"]:
+                    # if self.printSequence == msg["Sequence"]:
+                    #     self.printSequence += 1
+                    #     print(msg["data"], end='', flush=True)
+                    # else:
+                    while True:
+                        res = next((msg for msg in self.received_packets
+                                    if msg["Sequence"] == self.printSequence), None)
+                        if res == None:
+                            break
+                        print(res["data"], end='', flush=True)
                         self.printSequence += 1
-                        print(msg["data"], end='', flush=True)
-                    else:
-                        while True:
-                            res = next((msg for msg in self.received_packets
-                                        if msg["Sequence"] == self.printSequence), None)
-                            if res == None:
-                                break
-                            print(res["data"], end='', flush=True)
-                            self.printSequence += 1
 
 
                     pass
