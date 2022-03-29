@@ -2,6 +2,7 @@
 
 import argparse, socket, time, json, select, struct, sys, math
 import hashlib
+import zlib
 from json import JSONDecodeError
 
 
@@ -46,7 +47,7 @@ class Receiver:
 
                     self.log("Received data message %s" % msg)
                     if self.received_packets.index(msg) >= 0:
-                        self.send({"type": "ack", "Sequence": msg["Sequence"],
+                        self.send({"type": "ack", "Sequence": msg["Sequence"], 
                                    "hash": hashlib.md5(str(msg["data"]).encode('utf-8')).hexdigest(),
                                    "time": time.time()})
 
@@ -55,7 +56,7 @@ class Receiver:
                 except ValueError:
                     self.received_packets.append(msg)
                     # Always send back an ack
-                    self.send({"type": "ack", "Sequence" : msg["Sequence"],
+                    self.send({"type": "ack", "Sequence" : msg["Sequence"], 
                                "hash": hashlib.md5(str(msg["data"]).encode('utf-8')).hexdigest(),
                                "time": time.time()})
                     # Print out the data to stdout

@@ -65,19 +65,18 @@ class Sender:
                         k, addr = conn.recvfrom(65535)
                         msg = k.decode('utf-8')
                         msg = json.loads(msg)
-                        flag = True
-                        for x in list(self.packet_storage.keys()):
-                            if msg["Sequence"] == self.packet_storage[x][1]:
-                                flag = False
-                        if flag:
+                        temp_list = []
+                        for x in self.packet_storage.keys():
+                            temp_list.append(self.packet_storage[x][1])
+                        if msg["Sequence"] not in temp_list:
                             raise ValueError
                         for x in list(self.packet_storage.keys()):
-                            if self.packet_storage[x][1] == msg["Sequence"] and msg["type"] == "ack" \
-                                    and msg["hash"] == hashlib.md5(str(x).encode('utf-8')).hexdigest():
+                            if self.packet_storage[x][1] == msg["Sequence"] and msg["type"] == "ack" and msg["hash"] == \
+                                    hashlib.md5(str(x).encode('utf-8')).hexdigest():
                                 if (msg["time"] - self.packet_storage[x][0]) + (time.time() - msg["time"]) \
                                         < self.timeout:
                                     self.tolerance *= 2
-                                    self.timeout = 1.5
+                                    self.timeout = math.ceil(self.timeout / 2)
                                 self.packet_storage.pop(x, None)
                         self.log("Received message '%s'" % msg)
                         self.waiting = False
@@ -102,6 +101,7 @@ class Sender:
                             self.send(msg)
                             self.waiting = True
                 except (NameError, JSONDecodeError, ValueError):
+                    self.log("ooooooooooooooooooooooo")
                     self.repeated_ack += 1
                     if self.repeated_ack == 3:
                         self.tolerance = math.ceil(self.tolerance / 2)
