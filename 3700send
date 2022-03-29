@@ -15,7 +15,9 @@ class Sender:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
+        # Storage for the sent packets
         self.packet_storage = {}
+        # Current Window
         self.tolerance = 1
         self.sequenceNumber = 0
         self.repeated_ack = 0
@@ -30,6 +32,7 @@ class Sender:
 
     def run(self):
         while True:
+            # Limit the maximum bandwidth and avoid tolerance amount
             if self.tolerance > 32:
                 self.tolerance = 32
             elif self.tolerance < 2:
@@ -37,24 +40,37 @@ class Sender:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
 
             socks = select.select(sockets, [], [], 0.1)[0]
+            # For each loop in the check only allow one timeout to decrease the window
             time_out_flag = True
-            packet_sent = 0;
+            # Current sent packet under current loop
+            packet_sent = 0
+            # For each loop in the check only allow one ack to increase the window
             tolerance_flag = True
             for conn in socks:
+                # This try except allows the error to be raised (like packet corruption) and follow the
+                # following procedures.
                 try:
                     if conn == self.socket:
                         k, addr = conn.recvfrom(65535)
                         msg = k.decode('utf-8')
+                        # Decode the received message
                         msg = json.loads(msg)
                         temp_list = []
+                        # This part is to test whether we receive anything data we had received ack.
                         for x in self.packet_storage.keys():
                             temp_list.append(self.packet_storage[x][1])
                         if msg["Sequence"] not in temp_list:
                             raise ValueError
+                        # To delete the received data in the packet_storage (as new ack we had not received).
                         for x in list(self.packet_storage.keys()):
+                            # Make sure the data is the same and the packet is not corrupted.
                             if self.packet_storage[x][1] == msg["Sequence"] and msg["type"] \
                                     == "ack" and msg["hash"] == \
                                     hashlib.shake_256(str(x).encode('utf-8')).hexdigest(3):
+                                # Make sure the received packet is not a timeout packet, if it is a timeout packet,
+                                # there will be no update on the tolerance and timeout.
+                                # If the received ack is a normal ack, we double the windows as tolerance and decrease
+                                # the timeout range by dividing by 2.
                                 if (msg["time"] - self.packet_storage[x][0]) + \
                                         (float(str(time.time())[6:15]) - msg["time"]) \
                                         < self.timeout:
@@ -65,9 +81,12 @@ class Sender:
                         self.waiting = False
                     elif conn == sys.stdin:
                         tolerance_temp = self.tolerance
-                        #The pakcages send but not acked still count in window
+                        # The pakcages send but not acked still count in window
+                        # Decrease the windows size basing current packets in the storage that have not be received
+                        # an ack for it (avoid sending too much packets).
                         if len(self.packet_storage) >= 1:
                             tolerance_temp = self.tolerance - len(self.packet_storage)
+                        # Loop certain times (the tolerance_temp) and send the stdin message to the receiver.
                         for x in range(tolerance_temp):
                             data = sys.stdin.read(DATA_SIZE)
                             if len(data) == 0:
@@ -85,27 +104,36 @@ class Sender:
                             self.send(msg)
                             self.waiting = True
                 except (NameError, JSONDecodeError, ValueError):
-                    self.log("ooooooooooooooooooooooo")
+                    # Certain Error occurs meaning that something happens to the packet. Tolerance (window)
+                    # will be decreased.
                     self.repeated_ack += 1
                     if self.repeated_ack == 3:
                         self.tolerance = math.ceil(self.tolerance / 2)
                         self.repeated_ack = 0
                     continue
+            # This part is to check the timeout. If there is a timeout and there is also a available
+            # windows size, we will resend the packet.
             loop_tolerance = self.tolerance - packet_sent
             if self.packet_storage is not None:
+                # Loop through every key (data) in the packet_storage.
                 for x in self.packet_storage.keys():
+                    # If the window size is reached, stop sending new packets.
                     if loop_tolerance < 0:
                         break
                     # in packet_storage,key is data, 0 is time, 1 is sequence number
+                    # Determine whether the stored packet is timeout or not (whether an ack is received for
+                    # the sent packet).
                     if float(str(time.time())[6:15]) - self.packet_storage[x][0] > self.timeout:
                         seq_temp = self.packet_storage[x][1]
                         msg = {"type": "msg", "Sequence": seq_temp, "data": x,
                                "hash": hashlib.shake_256(str(x).encode('utf-8')).hexdigest(3)}
                         self.send(msg)
-
                         self.log("Received message '%s'" % msg)
+                        # Decrease the windows by 1.
                         loop_tolerance -= 1
+                        # Update the resent new time in the packet_storage.
                         self.packet_storage[x][0] = float(str(time.time())[6:15])
+                        # Only allow one update for the timeout and tolerance (window) each for-loop.
                         if time_out_flag:
                             self.timeout *= 2
                             time_out_flag = False

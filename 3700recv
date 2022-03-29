@@ -37,15 +37,25 @@ class Receiver:
                         self.remote_host = addr[0]
                         self.remote_port = addr[1]
 
+                    # To determine whether the packet is corrupted or not basing on json decode.
                     try:
                         msg = json.loads(data.decode('utf-8'))
                     except JSONDecodeError:
                         continue
 
+                    # To determine whether the packet is corrupted or not basing on hash value.
+                    # If a corrupted file detected, ignore this message (sender will mark it as a timeout and
+                    # resend the packet).
                     if msg["hash"] != hashlib.shake_256(str(msg["data"]).encode("utf-8")).hexdigest(3):
                         continue
 
+                    # Normal packet received.
                     self.log("Received data message %s" % msg)
+                    # To determine whether a packet has been received before or it is a new message data (determined
+                    # by sequence number).
+                    # If this data is not received, an ValueError will be raised and store it in the packet_storage.
+                    # If this data has been received (in the storage), also send an ack to the sender (since we
+                    # are not sure about the status and sequence of the packet (being dropped or duplicated)).
                     if self.received_packets.index(msg) >= 0:
                         self.send({"type": "ack", "Sequence": msg["Sequence"],
                                    "hash": hashlib.shake_256(str(msg["data"]).encode('utf-8')).hexdigest(3),
@@ -54,25 +64,26 @@ class Receiver:
                         continue
 
                 except ValueError:
+                    # Receive a new data that has not been received before.
+                    # Add the data into the packet_storage.
                     self.received_packets.append(msg)
                     # Always send back an ack
                     self.send({"type": "ack", "Sequence" : msg["Sequence"],
                                "hash": hashlib.shake_256(str(msg["data"]).encode('utf-8')).hexdigest(3),
                                "time": float(str(time.time())[6:15])})
-                    # Print out the data to stdout
-                    # if self.printSequence == msg["Sequence"]:
-                    #     self.printSequence += 1
-                    #     print(msg["data"], end='', flush=True)
-                    # else:
+                    # Order the sequence number.
+                    # The received will be printed basing on the sequence number order.
+                    # Larger sequence number will be stored first and being printed after all previous packet arrived.
+                    # For example, the current sequence number is 2. If we received a data with sequence number 5,
+                    # it will be printed after receiving data with sequence number 3 and 4.
                     while True:
                         res = next((msg for msg in self.received_packets
                                     if msg["Sequence"] == self.printSequence), None)
+                        # No more packet to print, the current one is the last packet data. 
                         if res == None:
                             break
                         print(res["data"], end='', flush=True)
                         self.printSequence += 1
-
-
                     pass
 
         return
