@@ -30,35 +30,16 @@ class Sender:
 
     def run(self):
         while True:
-            if self.tolerance > 128:
-                self.tolerance = 128
+            if self.tolerance > 32:
+                self.tolerance = 32
             elif self.tolerance < 2:
                 self.tolerance = 2
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
 
             socks = select.select(sockets, [], [], 0.1)[0]
             time_out_flag = True
-            loop_tolerance = self.tolerance
+            packet_sent = 0;
             tolerance_flag = True
-            if self.packet_storage is not None:
-                for x in self.packet_storage.keys():
-                    if loop_tolerance < 0:
-                        break
-                    # in packet_storage,key is data, 0 is time, 1 is sequence number
-                    if float(str(time.time())[6:15]) - self.packet_storage[x][0] > self.timeout:
-                        seq_temp = self.packet_storage[x][1]
-                        msg = {"type": "msg", "Sequence": seq_temp, "data": x,
-                               "hash": hashlib.shake_256(str(x).encode('utf-8')).hexdigest(3)}
-                        self.send(msg)
-                        self.log("Received message '%s'" % msg)
-                        loop_tolerance -= 1
-                        self.packet_storage[x][0] = float(str(time.time())[6:15])
-                        if time_out_flag:
-                            self.timeout *= 2
-                            time_out_flag = False
-                        if tolerance_flag:
-                            self.tolerance = math.ceil(self.tolerance / 2)
-                            tolerance_flag = False
             for conn in socks:
                 try:
                     if conn == self.socket:
@@ -100,6 +81,7 @@ class Sender:
                             self.packet_storage[msg["data"]] = [float(str(time.time())[6:15]), self.sequenceNumber]
                             self.sequenceNumber += 1
                             self.log("Sending message '%s'" % msg)
+                            packet_sent += 1
                             self.send(msg)
                             self.waiting = True
                 except (NameError, JSONDecodeError, ValueError):
@@ -109,6 +91,27 @@ class Sender:
                         self.tolerance = math.ceil(self.tolerance / 2)
                         self.repeated_ack = 0
                     continue
+            loop_tolerance = self.tolerance - packet_sent
+            if self.packet_storage is not None:
+                for x in self.packet_storage.keys():
+                    if loop_tolerance < 0:
+                        break
+                    # in packet_storage,key is data, 0 is time, 1 is sequence number
+                    if float(str(time.time())[6:15]) - self.packet_storage[x][0] > self.timeout:
+                        seq_temp = self.packet_storage[x][1]
+                        msg = {"type": "msg", "Sequence": seq_temp, "data": x,
+                               "hash": hashlib.shake_256(str(x).encode('utf-8')).hexdigest(3)}
+                        self.send(msg)
+
+                        self.log("Received message '%s'" % msg)
+                        loop_tolerance -= 1
+                        self.packet_storage[x][0] = float(str(time.time())[6:15])
+                        if time_out_flag:
+                            self.timeout *= 2
+                            time_out_flag = False
+                        if tolerance_flag:
+                            self.tolerance = math.ceil(self.tolerance / 2)
+                            tolerance_flag = False
 
         return
 
