@@ -42,23 +42,23 @@ class Receiver:
                     except JSONDecodeError:
                         continue
 
-                    if msg["hash"] != hashlib.md5(str(msg["data"]).encode("utf-8")).hexdigest():
+                    if msg["hash"] != hashlib.shake_256(str(msg["data"]).encode("utf-8")).hexdigest(3):
                         continue
 
                     self.log("Received data message %s" % msg)
                     if self.received_packets.index(msg) >= 0:
-                        self.send({"type": "ack", "Sequence": msg["Sequence"], 
-                                   "hash": hashlib.md5(str(msg["data"]).encode('utf-8')).hexdigest(),
-                                   "time": time.time()})
+                        self.send({"type": "ack", "Sequence": msg["Sequence"],
+                                   "hash": hashlib.shake_256(str(msg["data"]).encode('utf-8')).hexdigest(3),
+                                   "time": float(str(time.time())[6:15])})
 
                         continue
 
                 except ValueError:
                     self.received_packets.append(msg)
                     # Always send back an ack
-                    self.send({"type": "ack", "Sequence" : msg["Sequence"], 
-                               "hash": hashlib.md5(str(msg["data"]).encode('utf-8')).hexdigest(),
-                               "time": time.time()})
+                    self.send({"type": "ack", "Sequence" : msg["Sequence"],
+                               "hash": hashlib.shake_256(str(msg["data"]).encode('utf-8')).hexdigest(3),
+                               "time": float(str(time.time())[6:15])})
                     # Print out the data to stdout
                     # if self.printSequence == msg["Sequence"]:
                     #     self.printSequence += 1
